@@ -1,7 +1,7 @@
 
 ## Mr. Packer
 
-<img src="https://pbs.twimg.com/media/Ex0_hK_WYAEKa4w?format=png&name=small" style="width:200px;" alt="Trans rights are human rights. Also, the minecraft bee is trans."></img>
+<img src="https://pbs.twimg.com/media/Ex0_hK_WYAEKa4w?format=png&name=small" width="200px" alt="Trans rights are human rights. Also, the minecraft bee is trans."></img>
 
 * Disclaimer: This project is not in any capacity involved with
 [Modrinth](https://modrinth.com/) or the Modrinth team. This is
