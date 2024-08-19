@@ -2,6 +2,10 @@
 name = "mr-packer"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 [dependencies]
-iced = "0.12.1"
+iced.version = "0.12.1"
+iced.features = ["canvas", "tokio", "debug"]
+chrono = "0.4"
+tracing-subscriber = "0.3"
