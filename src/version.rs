@@ -1,6 +1,7 @@
 
 use regex::Regex;
 
+use std::str::FromStr;
 use std::fmt;
 
 #[derive(Debug)]
@@ -35,10 +36,31 @@ impl fmt::Display for BadVersionString {
 }
 impl std::error::Error for BadVersionString {}
 
+impl VersionPart {
+    // pub const NULL: VersionPart = VersionPart {
+    //     components: Box::new([0]),
+    // };
+
+    pub fn null() -> &'static Self {
+        static NULL: once_cell::sync::Lazy<VersionPart> = once_cell::sync::Lazy::new(|| VersionPart {
+            components: Box::new([0]),
+        });
+        &NULL
+    }
+
+    pub fn new(components_in: Box<[u32]>) -> Self {
+        VersionPart{components: components_in}
+    }
+}
+
 impl fmt::Display for VersionPart {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // TODO
-        write!(f, "{}", self.value)
+        write!(f, "{}", self.components
+            .iter()
+            .map(|c| c.to_string())
+            .collect::<Vec<String>>()
+            .join(".")
+        )
     }
 }
 
@@ -182,10 +204,10 @@ impl PartialOrd for VersionPart {
 }
 
 impl Version {
-    fn new(textIn: String, partsIn: Box<[VersionPart]>) -> Self {
+    fn new(text_in: String, parts_in: Box<[VersionPart]>) -> Self {
         Self{
-            text: textIn,
-            parts: partsIn,
+            text: text_in,
+            parts: parts_in,
         }
     }
 }
@@ -193,15 +215,15 @@ impl Version {
 impl FromStr for Version {
     type Err = BadVersionString;
 
-    fn from_str(textRaw: &str) -> Result<Self, Self::Err> {
-        if textRaw.is_empty() || textRaw == "*" {
+    fn from_str(text_raw: &str) -> Result<Self, Self::Err> {
+        if text_raw.is_empty() || text_raw == "*" {
             return Ok(Version{
                 text: String::from("*"),
                 parts: Box::new([]),
             });
         }
 
-        let mut processedText: String = textRaw.to_lowercase()
+        let mut processed_text: String = text_raw.to_lowercase()
             .replace("alpha", "0")
             .replace("beta", "1")
             .replace("pre-release", "2")
@@ -212,16 +234,16 @@ impl FromStr for Version {
             ;
 
         // convert all possible delimiters into a single delimiter before splitting
-        processedText = processedText
+        processed_text = processed_text
             .replace("+", "-")
             .replace("_", "-")
             .replace(":", "-")
             ;
         
-        let mut validParts = vec![];
-        let partCandidates = processedText.split('-')
-        for mut candidate in partCandidates {
-            if candidate == '' {
+        let mut valid_parts = vec![];
+        let part_candidates = processed_text.split('-');
+        for candidate in part_candidates {
+            if candidate.is_empty() {
                 continue;
             }
 
@@ -232,39 +254,56 @@ impl FromStr for Version {
                 continue;
             }
             else if Regex::new(r"^[a-z0-9.]+$").unwrap().is_match(candidate) {
-                for word in Regex::new(r"[.]*([a-z]+[.]+)").unwrap().find_iter(candidate) {
-                    candidate = candidate.replace(word, "");
-                }
+                let mut candidate_owned = candidate.to_string();
 
-                for letter in Regex::new(r"[0-9]([a-z])").unwrap().find_iter(candidate) {
-                    let idx = (letter.as_str().chars().next().unwrap() as u32) - ('a' as u32) + 1;
-                    candidate = candidate.replace(letter.as_str(), idx.to_string());
-                }
+                candidate_owned = Regex::new(r"[.]*([a-z]+[.]+)")
+                    .unwrap()
+                    .replace_all(&candidate_owned, "")
+                    .into_owned()
+                    ;
 
-                for letter in Regex::new(r"([a-z])").unwrap().find_iter(candidate) {
-                    let idx = (letter.as_str().chars().next().unwrap() as u32) - ('a' as u32) + 1;
-                    candidate = candidate.replace(letter.as_str(), idx.to_string());
-                }
+                // convert `a` to `1`, `b` to `2`, etc
+                candidate_owned = Regex::new(r"[0-9]([a-z])")
+                    .unwrap()
+                    .replace_all(&candidate_owned, |caps: &regex::Captures| {
+                        let letter = caps.get(1).unwrap().as_str().chars().next().unwrap();
+                        let idx = (letter as u32) - ('a' as u32) + 1;
+                        idx.to_string()
+                    })
+                    .into_owned()
+                    ;
 
-                validParts.push(candidate);
+                // convert `a` to `1`, `b` to `2`, etc
+                candidate_owned = Regex::new(r"([a-z])")
+                    .unwrap()
+                    .replace_all(&candidate_owned, |caps: &regex::Captures| {
+                        let letter = caps.get(1).unwrap().as_str().chars().next().unwrap();
+                        let idx = (letter as u32) - ('a' as u32) + 1;
+                        idx.to_string()
+                    })
+                    .into_owned()
+                    ;
+
+                valid_parts.push(candidate_owned);
             }
         }
 
         if !valid_parts.is_empty() {
-            let mut versionParts = Vec::new();
-            for part in validParts {
+            let mut version_parts = Vec::new();
+            for part in valid_parts {
                 let version_part_pieces = part
                     .split('.')
                     .filter_map(|piece| piece.parse::<u32>().ok())
                     .collect::<Vec<u32>>()
+                    .into_boxed_slice()
                     ;
-                versionParts.push(VersionPart::new(versionPartPieces));
+                version_parts.push(VersionPart::new(version_part_pieces));
             }
-            Ok(Version::new(processedText, versionParts))
+            Ok(Version::new(processed_text, version_parts.into_boxed_slice()))
         }
         else {
             Err(BadVersionString {
-                message: format!("Invalid version format: '{}'", textRaw).to_string(),
+                message: format!("Invalid version format: '{}'", text_raw).to_string(),
             })
         }
     }
@@ -272,8 +311,12 @@ impl FromStr for Version {
 
 impl fmt::Display for Version {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // TODO
-        write!(f, "{}", self.value)
+        write!(f, "{}", self.parts
+            .iter()
+            .map(|c| c.to_string())
+            .collect::<Vec<String>>()
+            .join(".")
+        )
     }
 }
 
@@ -281,22 +324,20 @@ impl PartialEq for Version {
     fn eq(&self, other: &Self) -> bool {
         let max_size = std::cmp::max(self.parts.len(), other.parts.len());
         for i in 0..max_size {
-            let a: u32 =
+            let a =
                 if self.parts.len() > i {
-                    self.parts[i]
+                    &self.parts[i]
                 } else {
-                    0
+                    VersionPart::null()
                 };
-            let b: u32 =
+            let b =
                 if other.parts.len() > i {
-                    other.parts[i]
+                    &other.parts[i]
                 } else {
-                    0
+                    VersionPart::null()
                 };
 
-            if a > b {
-                return false;
-            } else if a < b {
+            if a != b {
                 return false;
             }
         }
@@ -314,17 +355,17 @@ impl PartialOrd for Version {
     fn lt(&self, other: &Self) -> bool {
         let max_size = std::cmp::max(self.parts.len(), other.parts.len());
         for i in 0..max_size {
-            let a: u32 =
+            let a =
                 if self.parts.len() > i {
-                    self.parts[i]
+                    &self.parts[i]
                 } else {
-                    0
+                    VersionPart::null()
                 };
-            let b: u32 =
+            let b =
                 if other.parts.len() > i {
-                    other.parts[i]
+                    &other.parts[i]
                 } else {
-                    0
+                    VersionPart::null()
                 };
 
             if a > b {
@@ -340,17 +381,17 @@ impl PartialOrd for Version {
     fn le(&self, other: &Self) -> bool {
         let max_size = std::cmp::max(self.parts.len(), other.parts.len());
         for i in 0..max_size {
-            let a: u32 =
+            let a =
                 if self.parts.len() > i {
-                    self.parts[i]
+                    &self.parts[i]
                 } else {
-                    0
+                    VersionPart::null()
                 };
-            let b: u32 =
+            let b =
                 if other.parts.len() > i {
-                    other.parts[i]
+                    &other.parts[i]
                 } else {
-                    0
+                    VersionPart::null()
                 };
 
             if a > b {
@@ -366,17 +407,17 @@ impl PartialOrd for Version {
     fn gt(&self, other: &Self) -> bool {
         let max_size = std::cmp::max(self.parts.len(), other.parts.len());
         for i in 0..max_size {
-            let a: u32 =
+            let a =
                 if self.parts.len() > i {
-                    self.parts[i]
+                    &self.parts[i]
                 } else {
-                    0
+                    VersionPart::null()
                 };
-            let b: u32 =
+            let b =
                 if other.parts.len() > i {
-                    other.parts[i]
+                    &other.parts[i]
                 } else {
-                    0
+                    VersionPart::null()
                 };
 
             if a > b {
@@ -392,17 +433,17 @@ impl PartialOrd for Version {
     fn ge(&self, other: &Self) -> bool {
         let max_size = std::cmp::max(self.parts.len(), other.parts.len());
         for i in 0..max_size {
-            let a: u32 =
+            let a =
                 if self.parts.len() > i {
-                    self.parts[i]
+                    &self.parts[i]
                 } else {
-                    0
+                    VersionPart::null()
                 };
-            let b: u32 =
+            let b =
                 if other.parts.len() > i {
-                    other.parts[i]
+                    &other.parts[i]
                 } else {
-                    0
+                    VersionPart::null()
                 };
 
             if a > b {
@@ -417,10 +458,10 @@ impl PartialOrd for Version {
 }
 
 impl VersionRangePart {
-    fn new(boundaryIn: Version, inclusiveIn: bool) -> Self {
+    fn new(boundary_in: Version, inclusive_in: bool) -> Self {
         Self{
-            boundary: boundaryIn,
-            inclusive: inclusiveIn,
+            boundary: boundary_in,
+            inclusive: inclusive_in,
         }
     }
 }
@@ -430,24 +471,24 @@ impl VersionRange {
         let mut result: bool = true;
         let mut comparison: bool;
 
-        if self.lower.bound.text == "*" {} // fall through
+        if &self.lower.boundary.text == "*" {} // fall through
         else if self.lower.inclusive {
-            comparison = (self.lower.bound <= version);
-            result = result && comp;
+            comparison = &self.lower.boundary <= version;
+            result = result && comparison;
         }
         else {
-            comparison = (self.lower.bound < version);
-            result = result && comp;
+            comparison = &self.lower.boundary < version;
+            result = result && comparison;
         }
 
-        if self.upper.bound.text == "*" {} // fall through
+        if &self.upper.boundary.text == "*" {} // fall through
         else if self.upper.inclusive {
-            comparison = (self.upper.bound >= version);
-            result = result && comp;
+            comparison = &self.upper.boundary >= version;
+            result = result && comparison;
         }
         else {
-            comparison = (self.upper.bound > version);
-            result = result && comp;
+            comparison = &self.upper.boundary > version;
+            result = result && comparison;
         }
 
         return result;
@@ -456,7 +497,32 @@ impl VersionRange {
 
 impl fmt::Display for VersionRange {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // TODO
-        write!(f, "{}", self.value)
+        let formatted_text =
+            if &self.upper.boundary.text == "*" && &self.lower.boundary.text == "*" {
+                String::from("*")
+            }
+            else {
+                let lower_symbol =
+                    if self.lower.inclusive {
+                        "["
+                    }
+                    else {
+                        "("
+                    };
+                let upper_symbol =
+                    if self.upper.inclusive {
+                        "]"
+                    }
+                    else {
+                        ")"
+                    };
+                format!("{}{},{}{}",
+                    lower_symbol,
+                    self.lower.boundary,
+                    self.upper.boundary,
+                    upper_symbol
+                    )
+            };
+        write!(f, "{}", formatted_text)
     }
 }

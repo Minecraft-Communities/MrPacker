@@ -1,14 +1,17 @@
 #![allow(unused_imports)]
+#![allow(dead_code)]
 
 use iced::{Element, Sandbox, Settings};
 use iced::widget::text;
+
+mod version;
 
 fn main() -> iced::Result {
     StatePacker::run(Settings::default())
 }
 
 struct StatePacker {
-    localPacks: Vec<PackVirtual>,
+    // localPacks: Vec<PackVirtual>,
 }
 
 #[derive(Debug, Clone)]
@@ -20,7 +23,7 @@ impl Sandbox for StatePacker {
     type Message = MessagePacker;
 
     fn new() -> Self {
-        Self
+        StatePacker{}
     }
 
     fn title(&self) -> String {
